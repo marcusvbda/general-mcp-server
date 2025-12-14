@@ -4,7 +4,7 @@ const helloWorldTool: Tool = {
     hello_world: {
         name: "hello_world",
         description: "Say hello to a person.",
-        parameters: {
+        inputSchema: {
             type: "object",
             properties: {
                 name: {

@@ -4,7 +4,9 @@
     "type": "module",
     "scripts": {
         "start": "tsx src/index.ts",
-        "dev": "tsx watch src/index.ts"
+        "dev": "tsx watch src/index.ts",
+        "test:mcp": "node test-mcp.js",
+        "call": "node call-mcp.js"
     },
     "devDependencies": {
         "@types/node": "^20.0.0",

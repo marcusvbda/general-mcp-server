@@ -4,6 +4,10 @@ const userTool: Tool = {
     user: {
         name: "user",
         description: "Get the current user's name.",
+        inputSchema: {
+            type: "object",
+            properties: {}
+        },
         handler: async () => {
             return {
                 content: [
@@ -11,8 +15,7 @@ const userTool: Tool = {
                 ]
             }
         }
-    },
-
+    }
 }
 
 export default userTool;

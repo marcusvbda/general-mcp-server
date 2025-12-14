@@ -1,137 +1,119 @@
-import llm from "./llm";
-import type { Tool, ToolDefinition, ParsedResponse, Message, ToolResult } from "./types.js";
+import type { Tool, ToolDefinition, JsonRpcRequest, JsonRpcResponse, McpInitializeParams, McpInitializeResult, McpToolsListResult, McpToolsCallParams, McpToolsCallResult } from "./types.js";
 
-const mcpServer = {
-    tools: {} as Tool,
-    setTools: (tools: Tool) => mcpServer.tools = tools,
-    history: [] as Message[],
-    addHistory: (history: Message[]) => mcpServer.history.push(...history),
-    getHistory: (): Message[] => mcpServer.history,
-    maxIterations: 10,
-    setMaxIterations: (maxIterations: number) => mcpServer.maxIterations = maxIterations,
-    assistantDescription: "",
-    setAssistantDescription: (description: string) => mcpServer.assistantDescription = description,
-    listTools: (): Omit<ToolDefinition, 'handler'>[] => {
-        const { tools } = mcpServer;
-        return Object.keys(tools).map((key: string) => {
-            const { handler, ...toolInfo } = tools[key];
-            return toolInfo;
-        })
-    },
-    ask: async (prompt: string): Promise<ParsedResponse> => await mcpServer.orchestrateConversation(prompt),
-    parseResponse: (intent: any): ParsedResponse => {
-        let content = intent?.content;
-        if (Array.isArray(content) && content.length > 0) {
-            if (content[0]?.text) {
-                content = content[0].text;
-            } else if (content[0]?.type === 'text' && content[0]?.text) {
-                content = content[0].text;
-            } else {
-                content = JSON.stringify(content);
-            }
-        }
+class McpServer {
+    private tools: Tool = {};
 
-        if (!content) {
-            content = intent?.text || "No response";
-        }
+    setTools(tools: Tool): void {
+        this.tools = tools;
+    }
 
-        if (typeof content === 'string') {
-            const cleanedContent = content
-                .replace(/^```json\s*/i, '')
-                .replace(/^```\s*/, '')
-                .replace(/\s*```$/g, '')
-                .trim();
+    private listTools(): ToolDefinition[] {
+        return Object.values(this.tools);
+    }
 
-            try {
-                const parsedContent = JSON.parse(cleanedContent);
-                return { type: "json", data: parsedContent };
-            } catch (e) {
-                return { type: "text", text: content };
-            }
-        }
-
-        if (typeof content === 'object' && content !== null) {
-            return { type: "json", data: content };
-        }
-
-        return { type: "text", text: String(content) };
-    },
-    orchestrateConversation: async (prompt: string): Promise<ParsedResponse> => {
-        const { listTools, executeTool, maxIterations, parseResponse, addHistory, getHistory } = mcpServer;
-        const { identifyIntent } = llm;
-        const history = getHistory();
-
-        const messages: Message[] = [
-            {
-                role: "system",
-                content: mcpServer.assistantDescription,
-            },
-            ...history,
-            {
-                role: "user",
-                content: prompt,
-            },
-        ].filter((x): x is Message => x.content !== null && x.content !== undefined);
-
-        let counterMaxIterations = maxIterations;
-        while (counterMaxIterations > 0) {
-            counterMaxIterations--;
-            const intent = await identifyIntent(messages, listTools());
-            addHistory(messages);
-
-            if (!intent?.tool_calls || intent.tool_calls.length === 0) {
-                return parseResponse(intent);
-            }
-            messages.push(intent);
-            const toolResults = [];
-            for (const tool_call of intent.tool_calls) {
-                const action: any = tool_call?.function;
-                if (action?.name) {
-                    let parsedArgs = action.arguments;
-                    if (typeof action.arguments === 'string') {
-                        try {
-                            parsedArgs = JSON.parse(action.arguments);
-                        } catch (e) {
-                            parsedArgs = action.arguments;
-                        }
-                    }
-
-                    const result = await executeTool(action.name, parsedArgs);
-                    const parsedResult = parseResponse(result);
-
-                    let resultText = '';
-                    if (parsedResult.type === 'json') {
-                        resultText = JSON.stringify(parsedResult.data);
-                    } else {
-                        resultText = parsedResult.text;
-                    }
-
-                    toolResults.push({
-                        tool_call_id: tool_call.id,
-                        role: "tool" as const,
-                        name: action.name,
-                        content: resultText,
-                    });
-                }
-            }
-
-            messages.push(...toolResults);
-        }
-
-        return { type: "error", text: "Maximum iterations reached" };
-    },
-    executeTool: async (toolName: string, args: any): Promise<ToolResult> => {
-        const { tools } = mcpServer;
-        const tool = tools[toolName];
+    private async executeTool(name: string, args: any): Promise<McpToolsCallResult> {
+        const tool = this.tools[name];
         if (!tool) {
             return {
                 content: [
-                    { type: "text", text: `Error: Tool '${toolName}' not found` }
-                ]
+                    { type: "text", text: `Error: Tool '${name}' not found` }
+                ],
+                isError: true
             };
         }
-        return await tool.handler(args);
+
+        try {
+            const result = await tool.handler(args);
+            return result;
+        } catch (error: any) {
+            return {
+                content: [
+                    { type: "text", text: `Error executing tool: ${error.message || String(error)}` }
+                ],
+                isError: true
+            };
+        }
+    }
+
+    // MCP protocol methods
+    async handleInitialize(params: McpInitializeParams): Promise<McpInitializeResult> {
+        return {
+            protocolVersion: params.protocolVersion || "2024-11-05",
+            capabilities: {
+                tools: {}
+            },
+            serverInfo: {
+                name: "general-mcp-server",
+                version: "1.0.0"
+            }
+        };
+    }
+
+    handleToolsList(): McpToolsListResult {
+        const tools = this.listTools();
+        return {
+            tools: tools.map(tool => ({
+                name: tool.name,
+                description: tool.description,
+                inputSchema: tool.inputSchema
+            }))
+        };
+    }
+
+    async handleToolsCall(params: McpToolsCallParams): Promise<McpToolsCallResult> {
+        if (!params.name) {
+            return {
+                content: [
+                    { type: "text", text: "Error: Missing tool name" }
+                ],
+                isError: true
+            };
+        }
+
+        return await this.executeTool(params.name, params.arguments || {});
+    }
+
+    // JSON-RPC handler
+    async handleJsonRpc(request: JsonRpcRequest): Promise<JsonRpcResponse> {
+        try {
+            let result: any;
+
+            switch (request.method) {
+                case "initialize":
+                    result = await this.handleInitialize(request.params || {});
+                    break;
+                case "tools/list":
+                    result = this.handleToolsList();
+                    break;
+                case "tools/call":
+                    if (!request.params) {
+                        throw new Error("Missing params for tools/call");
+                    }
+                    result = await this.handleToolsCall(request.params);
+                    break;
+                default:
+                    throw new Error(`Unknown method: ${request.method}`);
+            }
+
+            return {
+                jsonrpc: "2.0",
+                id: request.id,
+                result
+            };
+        } catch (error: any) {
+            return {
+                jsonrpc: "2.0",
+                id: request.id,
+                error: {
+                    code: -32603,
+                    message: error.message || "Internal error",
+                    data: error
+                }
+            };
+        }
     }
 }
 
+const mcpServer = new McpServer();
 export default mcpServer;
+

@@ -1,10 +1,11 @@
+// MCP Tool types (following official specification)
 export type ToolParameterProperty = {
     type: string;
     description?: string;
     [key: string]: any;
 }
 
-export type ToolParameters = {
+export type ToolInputSchema = {
     type: "object";
     properties: {
         [key: string]: ToolParameterProperty;
@@ -15,8 +16,7 @@ export type ToolParameters = {
 export type ToolDefinition = {
     name: string;
     description: string;
-    parameters?: ToolParameters;
-    required?: string[];
+    inputSchema: ToolInputSchema;
     handler: (args: any) => Promise<ToolResult>;
 }
 
@@ -26,30 +26,71 @@ export type Tool = {
 
 export type ToolResult = {
     content: Array<{
-        type: string;
+        type: "text";
         text: string;
-        [key: string]: any;
     }>;
+    isError?: boolean;
 }
 
-export type ParsedResponse =
-    | { type: "json"; data: any }
-    | { type: "text"; text: string }
-    | { type: "error"; text: string };
-
-export type Message = {
-    role: "system" | "user" | "assistant" | "tool";
-    content?: string | null;
-    name?: string;
-    tool_call_id?: string;
-    tool_calls?: ToolCall[];
+// JSON-RPC types
+export type JsonRpcRequest = {
+    jsonrpc: "2.0";
+    id: string | number | null;
+    method: string;
+    params?: any;
 }
 
-export type ToolCall = {
-    id: string;
-    type: "function";
-    function: {
-        name: string;
-        arguments: string | object;
+export type JsonRpcResponse = {
+    jsonrpc: "2.0";
+    id: string | number | null;
+    result?: any;
+    error?: {
+        code: number;
+        message: string;
+        data?: any;
     };
+}
+
+// MCP protocol types
+export type McpInitializeParams = {
+    protocolVersion: string;
+    capabilities?: Record<string, any>;
+    clientInfo?: {
+        name: string;
+        version: string;
+    };
+}
+
+export type McpInitializeResult = {
+    protocolVersion: string;
+    capabilities: {
+        tools?: {};
+    };
+    serverInfo: {
+        name: string;
+        version: string;
+    };
+}
+
+export type McpTool = {
+    name: string;
+    description: string;
+    inputSchema: ToolInputSchema;
+}
+
+export type McpToolsListResult = {
+    tools: McpTool[];
+}
+
+export type McpToolsCallParams = {
+    name: string;
+    arguments?: any;
+}
+
+export type McpToolsCallResult = {
+    content: Array<{
+        type: "text";
+        text: string;
+    }>;
+    isError?: boolean;
 }

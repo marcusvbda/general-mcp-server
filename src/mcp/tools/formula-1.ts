@@ -1,14 +1,15 @@
-import { Tool } from "../types";
+import { Tool } from "../types.js";
 
 const formula1Tool: Tool = {
     get_F1_Winners: {
         name: "get_F1_Winners",
         description: "Get the winners of the F1 championship.",
-        parameters: {
+        inputSchema: {
             type: "object",
             properties: {
                 year: { type: "number" }
-            }
+            },
+            required: ["year"]
         },
         handler: async (args: { year: number }) => {
             const winners: any = {
