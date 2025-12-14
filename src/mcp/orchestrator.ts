@@ -1,6 +1,7 @@
 import dotenv from "dotenv";
 import OpenAI from "openai";
 import mcpServer from "./server.js";
+
 import type { ToolDefinition } from "./types.js";
 
 dotenv.config();
@@ -28,16 +29,17 @@ type ParsedResponse =
     | { type: "error"; text: string };
 
 class McpOrchestrator {
-    private model: string = "gpt-4o-mini";
+    private model: string = process.env.OPEN_AI_MODEL!;
     private client: OpenAI;
     private history: Message[] = [];
     private maxIterations: number = 10;
     private assistantDescription: string = "";
 
+
     constructor() {
         this.client = new OpenAI({
-            apiKey: process.env.OPENROUTER_API_KEY,
-            baseURL: "https://openrouter.ai/api/v1"
+            apiKey: process.env.OPEN_AI_API_KEY!,
+            baseURL: process.env.OEPN_AI_BASE_URL!
         });
     }
 
